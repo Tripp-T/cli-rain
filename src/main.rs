@@ -115,7 +115,7 @@ impl RainMap {
         }
     }
     pub fn contains(&self, pos: &Pos) -> bool {
-        pos.x > 0 && pos.x < self.width as i32 && pos.y > 0 && pos.y < self.height as i32
+        pos.x >= 0 && pos.x < self.width as i32 && pos.y >= 0 && pos.y < self.height as i32
     }
     pub fn resize(&mut self, width: usize, height: usize) -> Result<()> {
         debug!(
