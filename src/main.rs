@@ -2,6 +2,7 @@
 use {
     anyhow::{bail, Context as _, Result},
     clap::Parser,
+    colored::Colorize,
     crossterm::{
         cursor,
         event::{poll, read, Event, KeyCode, KeyEvent, KeyEventKind},
@@ -27,10 +28,10 @@ use {
 #[derive(Parser)]
 struct Opts {
     #[clap(long)]
-    /// Disables color (used to show depth)
+    /// Disables color (used to show depth, lighter is closer)
     no_color: bool,
-    #[clap(short = 'r', long, default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=100))]
-    /// How likely a new raindrop is to spawn in a column (1-100)
+    #[clap(short = 'r', long, default_value_t = 3, value_parser = clap::value_parser!(u8).range(1..=100))]
+    /// How likely a new raindrop is to spawn in a column every update(1-100)
     spawn_rate: u8,
     #[clap(short, long, default_value_t = 50, value_parser = clap::value_parser!(u64).range(1..=2000))]
     /// How frequently to update the screen (in milliseconds)
@@ -45,8 +46,6 @@ fn main() -> Result<()> {
 
     let mut stdout = stdout();
     execute!(stdout, terminal::EnterAlternateScreen)?;
-    // execute!(stdout, terminal::Clear(terminal::ClearType::All))?;
-    // execute!(stdout, cursor::MoveTo(0, 0))?;
     let window_size = terminal::size().context("failed to get terminal window size")?;
 
     ctrlc::set_handler(handle_exit).context("failed to set ctrl-c handler")?;
@@ -79,11 +78,7 @@ fn main() -> Result<()> {
 
 fn handle_exit() {
     let mut stdout = std::io::stdout();
-    queue!(stdout, terminal::LeaveAlternateScreen).expect("failed to exit alternate screen");
-    stdout
-        .flush()
-        .context("failed to flush stdout")
-        .expect("failed to flush stdout");
+    execute!(stdout, terminal::LeaveAlternateScreen).expect("failed to exit alternate screen");
     exit(0);
 }
 
@@ -109,8 +104,10 @@ impl RainMap {
         for x in 0..self.width {
             let should_add = rand.random_bool(opts.spawn_rate as f64 / 100.0);
             if should_add {
-                self.entities
-                    .push((Pos::new(x as i32, 0, 0), RainEntity::new()));
+                self.entities.push((
+                    Pos::new(x as i32, 0, rand.random_range(i16::MIN..i16::MAX)),
+                    RainEntity::new(&mut rand),
+                ));
             }
         }
     }
@@ -180,12 +177,20 @@ impl RainMap {
                     continue;
                 };
                 let s = if !opts.no_color {
-                    match (z, format!("{c}")) {
-                        (..0, s) => s.dark_blue(),
-                        (0, s) => s.blue(),
-                        (_, s) => s.cyan(),
-                    }
-                    .to_string()
+                    // normalize z (i16) to a u8
+                    let normalized_z = (((z as i32 - i16::MIN as i32) * 255)
+                        / (i16::MAX as i32 - i16::MIN as i32))
+                        as u8;
+
+                    let r = 0;
+                    let g = if normalized_z == 0 {
+                        0
+                    } else {
+                        normalized_z / 2
+                    };
+                    let b = normalized_z;
+
+                    format!("{c}").truecolor(r, g, b).to_string()
                 } else {
                     format!("{c}")
                 };
@@ -202,18 +207,12 @@ struct RainEntity {
     c: char,
     velocity: Velocity,
 }
-impl Display for RainEntity {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.c)
-    }
-}
 impl RainEntity {
     const AVAILABLE_CHARS: &[char] = &['\\', '/', '|', '~', '(', ')', '[', ']', '*', '#', '@'];
-    pub fn new() -> Self {
-        let mut rand = rand::rng();
+    pub fn new(rand: &mut ThreadRng) -> Self {
         Self {
             c: Self::AVAILABLE_CHARS[rand.random_range(0..Self::AVAILABLE_CHARS.len())],
-            velocity: Velocity::new(&mut rand),
+            velocity: Velocity::new(rand),
         }
     }
 }
@@ -227,12 +226,12 @@ struct Velocity {
 impl Velocity {
     const X_RANGE: RangeInclusive<i32> = -3..=3;
     const Y_RANGE: RangeInclusive<i32> = -3..=-1;
-    const Z_RANGE: RangeInclusive<i16> = -3..=3;
+    const Z_RANGE: RangeInclusive<i16> = -128..=128;
     pub fn new(rand: &mut ThreadRng) -> Self {
         Self {
-            x: rand.random_range(Self::X_RANGE).neg(),
+            x: rand.random_range(Self::X_RANGE),
             y: rand.random_range(Self::Y_RANGE).neg(),
-            z: rand.random_range(Self::Z_RANGE).neg(),
+            z: rand.random_range(Self::Z_RANGE),
         }
     }
 }
