@@ -46,10 +46,9 @@ fn main() -> Result<()> {
 
     let mut stdout = stdout();
     execute!(stdout, terminal::EnterAlternateScreen)?;
-    let window_size = terminal::size().context("failed to get terminal window size")?;
-
     ctrlc::set_handler(handle_exit).context("failed to set ctrl-c handler")?;
 
+    let window_size = terminal::size().context("failed to get terminal window size")?;
     debug!("window size: {}x{}", window_size.0, window_size.1);
 
     let mut rain_map = RainMap::new(window_size.0 as usize, window_size.1 as usize)?;
@@ -69,16 +68,16 @@ fn main() -> Result<()> {
         } else {
             // no terminal events, loop as usual
             write!(stdout, "{}", rain_map.render(&opts))?;
+            stdout.flush().context("failed to flush stdout")?;
             rain_map.update();
             rain_map.hydrate(&opts);
-            stdout.flush().context("failed to flush stdout")?;
         }
     }
 }
 
 fn handle_exit() {
-    let mut stdout = std::io::stdout();
-    execute!(stdout, terminal::LeaveAlternateScreen).expect("failed to exit alternate screen");
+    execute!(std::io::stdout(), terminal::LeaveAlternateScreen)
+        .expect("failed to exit alternate screen");
     exit(0);
 }
 
@@ -105,7 +104,7 @@ impl RainMap {
             let should_add = rand.random_bool(opts.spawn_rate as f64 / 100.0);
             if should_add {
                 self.entities.push((
-                    Pos::new(x as i32, 0, rand.random_range(i16::MIN..i16::MAX)),
+                    Pos::new(x as i32, 0, rand.random_range(-16384..16384)),
                     RainEntity::new(&mut rand),
                 ));
             }
@@ -182,15 +181,9 @@ impl RainMap {
                         / (i16::MAX as i32 - i16::MIN as i32))
                         as u8;
 
-                    let r = 0;
-                    let g = if normalized_z == 0 {
-                        0
-                    } else {
-                        normalized_z / 2
-                    };
-                    let b = normalized_z;
-
-                    format!("{c}").truecolor(r, g, b).to_string()
+                    format!("{c}")
+                        .truecolor(0, normalized_z.checked_div(2).unwrap_or(0), normalized_z)
+                        .to_string()
                 } else {
                     format!("{c}")
                 };
@@ -226,11 +219,11 @@ struct Velocity {
 impl Velocity {
     const X_RANGE: RangeInclusive<i32> = -3..=3;
     const Y_RANGE: RangeInclusive<i32> = -3..=-1;
-    const Z_RANGE: RangeInclusive<i16> = -128..=128;
+    const Z_RANGE: RangeInclusive<i16> = -5248..=5248;
     pub fn new(rand: &mut ThreadRng) -> Self {
         Self {
             x: rand.random_range(Self::X_RANGE),
-            y: rand.random_range(Self::Y_RANGE).neg(),
+            y: rand.random_range(Self::Y_RANGE),
             z: rand.random_range(Self::Z_RANGE),
         }
     }
@@ -248,7 +241,7 @@ impl Pos {
     }
     pub fn shift(&mut self, vel: &Velocity) {
         self.x += vel.x;
-        self.y += vel.y;
+        self.y -= vel.y;
         self.z = self.z.saturating_add(vel.z);
     }
 }
