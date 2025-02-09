@@ -1,23 +1,17 @@
-#![allow(unused_imports)]
 use {
     anyhow::{bail, Context as _, Result},
     clap::Parser,
     colored::Colorize,
     crossterm::{
-        cursor,
-        event::{poll, read, Event, KeyCode, KeyEvent, KeyEventKind},
-        execute, queue,
-        style::Stylize,
-        terminal, QueueableCommand,
+        event::{poll, read, Event, KeyCode},
+        execute, terminal,
     },
     itertools::Itertools,
-    once_cell::sync::Lazy,
-    rand::{distr, prelude::*, rng},
+    rand::prelude::*,
     rayon::prelude::*,
     std::{
-        fmt::Display,
         io::{stdout, Write},
-        ops::{Neg, RangeInclusive},
+        ops::RangeInclusive,
         process::exit,
         time::Duration,
     },
@@ -31,7 +25,7 @@ struct Opts {
     /// Disables color (used to show depth, lighter is closer)
     no_color: bool,
     #[clap(short = 'r', long, default_value_t = 3, value_parser = clap::value_parser!(u8).range(1..=100))]
-    /// How likely a new raindrop is to spawn in a column every update(1-100)
+    /// How likely a new raindrop is to spawn in each top column every update (1-100)
     spawn_rate: u8,
     #[clap(short, long, default_value_t = 50, value_parser = clap::value_parser!(u64).range(1..=2000))]
     /// How frequently to update the screen (in milliseconds)
